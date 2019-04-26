@@ -19,6 +19,7 @@ import logging
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+if not os.path.exists('../logs'): os.makedirs('../logs')
 fh = logging.FileHandler('../logs/log_{}.txt'.format(str(datetime.now())))
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 filter = logging.Filter(name='root')
