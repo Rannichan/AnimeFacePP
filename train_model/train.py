@@ -41,6 +41,7 @@ def train(net_factory, model_path, img_dir, label_files, val_label_file,
     :param base_lr:
     :return:
     """
+    if not os.path.exists(model_path): os.makedirs(model_path)
     net = model_path.split('/')[-1]
     logger.info("Current training net: {}".format(net))
     logger.info("Model will be saved in {}".format(model_path))
