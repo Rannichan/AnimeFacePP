@@ -58,7 +58,7 @@ def gen_img_bbox(img_dir, label_file, net):
         if max(box_width, box_height) < 20 or xmin < 0 or ymin < 0:
             continue
 
-        for i in range(20):
+        for i in range(10):
             # pos and part face size [minsize*0.8,maxsize*1.25]
             size = np.random.randint(int(min(box_width, box_height) * 0.8),
                                      np.ceil(max(box_width, box_height) * 1.25))
@@ -185,7 +185,7 @@ def gen_img_landmark(img_dir, label_file, net, argument=False):
                 continue
 
             # random shift the bounding box to get augmented data
-            for i in range(10):
+            for i in range(5):
                 bbox_size = np.random.randint(int(min(box_width, box_height) * 0.8),
                                               np.ceil(max(box_width, box_height) * 1.25))
                 delta_x = np.random.randint(int(-box_width * 0.2), int(box_width * 0.2))

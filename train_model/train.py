@@ -10,7 +10,7 @@ from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 from MTCNN_config import config
-from data_loader import batch_generator
+from data_loader import batch_generator, load_all
 from train_utils import train_model, random_flip_images, image_color_distort
 from eval import eval
 from PIL import ImageDraw, Image
@@ -56,6 +56,9 @@ def train(net_factory, model_path, img_dir, label_files, val_label_file,
     image_batch, label_batch, bbox_batch, landmark_batch = iter.get_next()
     train_init_op = iter.make_initializer(train_batches)
     logger.info("Data loader created")
+
+    # load data for validation
+    val_data_array = load_all(img_dir, val_label_file, net)
         
     if net == 'PNet':
         image_size = 12
@@ -171,10 +174,9 @@ def train(net_factory, model_path, img_dir, label_files, val_label_file,
             saver.save(sess, ckpt_name)
             logger.info("after training of {} epochs, {} has been saved.".format(epoch, ckpt_name))
 
-            bbox_loss, landmark_loss, L2_loss, total_loss = eval(net_factory=net_factory,
+            bbox_loss, landmark_loss, L2_loss, total_loss = eval(data_array=val_data_array,
                                                                  model_path=model_path,
                                                                  img_dir=img_dir,
-                                                                 label_file=val_label_file,
                                                                  regression=False)
             logger.info("Epoch: %d/%d, bbox loss: %4f, Landmark loss :%4f, L2 loss: %4f, Total Loss: %4f"
                         % (epoch, end_epoch, bbox_loss, landmark_loss, L2_loss, total_loss))

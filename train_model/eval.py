@@ -16,7 +16,7 @@ from train_utils import random_flip_images, image_color_distort, pred_visualizer
 from PIL import ImageDraw, Image
 
 
-def eval(net_factory, model_path, img_dir, label_file, regression=False):
+def eval(data_array, model_path, img_dir, regression=False):
     """
     If regression is False, compute bbox loss and landmark loss;
     If regression is True, do bbox regression and landmark regression.
@@ -67,7 +67,7 @@ def eval(net_factory, model_path, img_dir, label_file, regression=False):
         landmark_target = graph.get_tensor_by_name('landmark_target:0')
 
         # load data
-        name_array, image_array, label_array, bbox_array, landmark_array = load_all(img_dir, label_file, net)
+        (name_array, image_array, label_array, bbox_array, landmark_array) = data_array
         feed_dict = {input_image: image_array,
                      label: label_array,
                      bbox_target: bbox_array,
@@ -93,10 +93,10 @@ def eval(net_factory, model_path, img_dir, label_file, regression=False):
 
 
 if __name__ == "__main__":
-    output = eval(net_factory=R_Net,
+    data_array = load_all('../data/bbx_landmark/mini_24.txt')
+    output = eval(data_array=data_array,
                   model_path='../save/MTCNN_model/RNet',
                   img_dir='../data/bbx_landmark',
-                  label_file='../data/bbx_landmark/mini_24.txt',
                   regression=True)
 
     print(output)

@@ -188,6 +188,7 @@ def load_all(img_dir, label_file, net):
         img_path = os.path.join(img_dir, filename).replace('\\', '/')
         img = cv2.imread(img_path)
         height, width, channel = img.shape
+        if height != width: continue
 
         # read normalized bounding box
         xmin, ymin, xmax, ymax = int(bbox["xmin"]), int(bbox["ymin"]), int(bbox["xmax"]), int(bbox["ymax"])
@@ -209,5 +210,5 @@ def load_all(img_dir, label_file, net):
         bbox_array.append(box_normalized)
         landmark_array.append(landmark_normalized)
 
-        return np.array(name_array), np.array(image_array), np.array(label_array), \
-               np.array(bbox_array), np.array(landmark_array)
+    return (np.array(name_array), np.array(image_array), np.array(label_array), \
+               np.array(bbox_array), np.array(landmark_array))
