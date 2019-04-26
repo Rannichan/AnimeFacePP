@@ -3,21 +3,34 @@
 Animation face keypoints detector
 
 
-# Prepare training/evaluation data
-Put your original image data, together with its label file, under 'data' directory. (like 'lfw_5590' and testImageList.txt)
-
-Under 'prepare_data' directory, modify the code of prepare_data.py for your data path, then run it to get training/evaluation data.
+## Prepare training data
+* Make sure the label files at the right palce in data folder
 ```angular2html
-cd prepare_data
-python prepare_data.py
-``` 
+data/bbx_landmark/testImageList.txt
+data/bbx_landmark/trainImageList.txt
+```
+* Make sure image file at the right palce in data folder
+```angular2html
+data/bbx_landmark/lfw_5590
+data/bbx_landmark/net_7876
+```
+* Then use script to generate generate augmented training data
+```angular2html
+bash prepare.sh
+```
 
-# Start training
-Under 'train_model' directory, modify the code of train_RNet.py for your data path, then run it to start training. 
+## Start training
+* Run the training script to start training
+```angular2html
+bash train.sh
+```
+* log files will be save in "logs" folder
 
-Model will saved in 'save' directory.
-
-You can use tensorboard to monitor the training process.
+* tensorflow events will be saved in "logs/RNet" folder. You can use tensorboard to monitor the training process.
 ```angular2html
 tensorboard --logdir=logs/RNet
 ``` 
+* model will be saved in "save" folder
+
+## Evaluation
+... to be completed
