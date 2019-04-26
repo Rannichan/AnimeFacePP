@@ -41,8 +41,8 @@ def eval(data_array, model_path, img_dir, regression=False):
 
     # saver = tf.train.Saver()
     with tf.Session() as sess:
-        saver = tf.train.import_meta_graph('../save/MTCNN_model/RNet/mtcnn_epoch22.meta')
         ckpt = tf.train.latest_checkpoint(model_path)
+        saver = tf.train.import_meta_graph(ckpt + '.meta')
 
         if ckpt is not None:
             print("Model found: {}".format(ckpt))
@@ -93,7 +93,7 @@ def eval(data_array, model_path, img_dir, regression=False):
 
 
 if __name__ == "__main__":
-    data_array = load_all('../data/bbx_landmark/mini_24.txt')
+    data_array = load_all('../data/bbx_landmark', '../data/bbx_landmark/testImageList.txt', 'RNet')
     output = eval(data_array=data_array,
                   model_path='../save/MTCNN_model/RNet',
                   img_dir='../data/bbx_landmark',
