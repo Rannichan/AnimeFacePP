@@ -1,6 +1,5 @@
-#coding:utf-8
-from train_models.mtcnn_model import P_Net
-from train_models.train import train
+from train_model.mtcnn_model import P_Net
+from train_model.train import train
 
 
 def train_PNet(base_dir, prefix, end_epoch, display, lr):
@@ -15,6 +14,7 @@ def train_PNet(base_dir, prefix, end_epoch, display, lr):
     """
     net_factory = P_Net
     train(net_factory, prefix, end_epoch, base_dir, display=display, base_lr=lr)
+
 
 if __name__ == '__main__':
     #data path

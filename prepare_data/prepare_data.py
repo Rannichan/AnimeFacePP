@@ -5,13 +5,12 @@ import os
 import sys
 import cv2
 import random
-import tensorflow as tf
+import argparse
 import numpy as np
 from PIL import Image, ImageDraw
 from bbox import BBox
 from prep_utils import IoU
 from landmark_utils import rotate, flip
-from tfrecord_utils import _process_image_withoutcoder, _convert_to_example_simple
 
 
 def gen_img_bbox(img_dir, label_file, net):
@@ -269,28 +268,61 @@ def gen_img_landmark(img_dir, label_file, net, argument=False):
         sys.stdout.flush()
 
 
-def gen_tfrecords(img_dir, label_file, output_dir, net, shuffle=False):
-    tfrecord_file = "{}/{}_bbox_landmark.tfrecord".format(output_dir, net)
-    if tf.gfile.Exists(tfrecord_file):
-        print("Dataset (tfrecord) files already exist. Exiting without recreating them.")
+def gen_img_test(img_dir, test_label_file, net):
+    """
+    generate image and corresponding label file for test or evaluation
+    :param img_dir:
+    :param test_label_file:
+    :param net:
+    :return:
+    """
+    if net == "PNet": size = 12
+    elif net == "RNet": size = 24
+    elif net == "ONet": size = 48
+    else:
+        print('Net type error')
         return
 
-    labels = read_label_file2(label_file)
-    if shuffle:
-        tfrecord_file = tfrecord_file+"_shuffle"
-        random.shuffle(labels)
+    img_idx = 0
 
-    with tf.python_io.TFRecordWriter(tfrecord_file) as tfrecord_writer:
-        for i, data_unit in enumerate(labels):
-            if (i+1) % 100 == 0:
-                sys.stdout.write('\r>> {}/{} images has been converted'.format(i+1, len(labels)))
-            sys.stdout.flush()
-            filename = data_unit['filename']
-            img_path = os.path.join(img_dir, filename)
-            image_data, height, width = _process_image_withoutcoder(img_path)
-            example = _convert_to_example_simple(data_unit, image_data)
-            tfrecord_writer.write(example.SerializeToString())
-    print('\nFinished converting the MTCNN dataset (tfrecords)!')
+    bbox_label_file = open(os.path.join(img_dir, 'test_bbox_{}.txt'.format(size)), 'w')
+    landmark_label_file = open(os.path.join(img_dir, "test_landmark_{}.txt".format(size)), 'w')
+    test_dir = os.path.join(img_dir, 'test_{}'.format(size))  # two label files share one image directory
+    if not os.path.exists(test_dir): os.makedirs(test_dir)
+
+    label_file = read_label_file2(test_label_file)
+    for data_unit in label_file:
+        filename = data_unit["filename"]
+        bbox = data_unit["bbox"]
+
+        # read image
+        img_path = os.path.join(img_dir, filename).replace('\\', '/')
+        img = cv2.imread(img_path)
+        height, width, channel = img.shape
+        if height != width: continue
+
+        # read normalized bounding box
+        xmin, ymin, xmax, ymax = int(bbox["xmin"]), int(bbox["ymin"]), int(bbox["xmax"]), int(bbox["ymax"])
+        box_normalized = [float(xmin)/width, float(ymin)/height, float(xmax)/width, float(ymax)/height]
+
+        # read normalized landmarks
+        landmark1 = [bbox["xlefteye"]/width, bbox["ylefteye"]/height]
+        landmark2 = [bbox["xrighteye"]/width, bbox["yrighteye"]/height]
+        landmark3 = [bbox["xnose"]/width, bbox["ynose"]/height]
+        landmark4 = [bbox["xleftmouth"]/width, bbox["yleftmouth"]/height]
+        landmark5 = [bbox["xrightmouth"]/width, bbox["yrightmouth"]/height]
+        landmark_normalized = np.concatenate((landmark1, landmark2, landmark3, landmark4, landmark5), axis=0)
+
+        resized_im = cv2.resize(img, (size, size), interpolation=cv2.INTER_LINEAR)
+        save_file = os.path.join(test_dir, "{}.jpg".format(img_idx))
+        cv2.imwrite(save_file, resized_im)
+        bbox_label_file.write("test_{}/{}.jpg".format(size, img_idx) + " -1 " +
+                              " ".join([str(x) for x in box_normalized]) + "\n")
+        landmark_label_file.write("test_{}/{}.jpg".format(size, img_idx) + " -2 " +
+                                  " ".join([str(x) for x in landmark_normalized]) + "\n")
+        img_idx += 1
+        sys.stdout.write('\r>> {} images has been generated'.format(img_idx))
+        sys.stdout.flush()
 
 
 def read_label_file(label_file, with_landmark=True):
@@ -331,7 +363,6 @@ def read_label_file2(label_file):
         data_unit = dict()
         bbox = dict()
         data_unit['filename'] = info[0].replace('\\', '/')
-        # data_unit['label'] = 1
         bbox['xmin'] = float(info[1])
         bbox['xmax'] = float(info[2])
         bbox['ymin'] = float(info[3])
@@ -352,10 +383,27 @@ def read_label_file2(label_file):
 
 
 if __name__ == "__main__":
-    net = 'RNet'
-    img_dir = '../data/bbx_landmark'
-    label_file = '../data/bbx_landmark/trainImageList.txt'
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", default="test", help="train_bbox/train_landmark/test", type=str)
+    parser.add_argument("--net", default="RNet", help="model name", type=str)
+    parser.add_argument("--img_dir", default="../data/bbx_landmark", help="image directory", type=str)
+    parser.add_argument("--label_file", default="../data/bbx_landmark/testImageList.txt", help="original label file", type=str)
+    args = parser.parse_args()
+    mode = args.mode
+    net = args.net
+    img_dir = args.img_dir
+    label_file = args.label_file
+    # net = 'RNet'
+    # img_dir = '../data/bbx_landmark'
+    # train_label_file = '../data/bbx_landmark/trainImageList.txt'
+    # test_label_file = '../data/bbx_landmark/testImageList.txt'
     # output_dir = '../data/train/RNet'
 
-    gen_img_bbox(img_dir, label_file, net)
-    # gen_img_landmark(img_dir, label_file, net, argument=True)
+    if mode == "test":
+        gen_img_test(img_dir, label_file, net)
+    elif mode == "train_bbox":
+        gen_img_bbox(img_dir, label_file, net)
+    elif mode == "train_landmark":
+        gen_img_landmark(img_dir, label_file, net, argument=True)
+    else:
+        print("Mode error, pick one from train_bbox/train_landmark/test")

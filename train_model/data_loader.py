@@ -3,12 +3,12 @@ yipengwa@usc.edu
 """
 import os
 import cv2
-import tensorflow as tf
 import random
+import numpy as np
+import tensorflow as tf
 
 
 def read_lable_file(label_file):
-    # print('Read label file 2: the label file is ', label_file)
     imagelist = open(label_file, 'r')
     data = []
     for line in imagelist.readlines():
@@ -47,6 +47,33 @@ def read_lable_file(label_file):
             bbox['yleftmouth'] = float(info[9])
             bbox['xrightmouth'] = float(info[10])
             bbox['yrightmouth'] = float(info[11])
+        data_unit['bbox'] = bbox
+        data.append(data_unit)
+    return data
+
+
+def read_label_file2(label_file):
+    imagelist = open(label_file, 'r')
+    data = []
+    for line in imagelist.readlines():
+        info = line.strip().split(' ')
+        data_unit = dict()
+        bbox = dict()
+        data_unit['filename'] = info[0].replace('\\', '/')
+        bbox['xmin'] = float(info[1])
+        bbox['xmax'] = float(info[2])
+        bbox['ymin'] = float(info[3])
+        bbox['ymax'] = float(info[4])
+        bbox['xlefteye'] = float(info[5])
+        bbox['ylefteye'] = float(info[6])
+        bbox['xrighteye'] = float(info[7])
+        bbox['yrighteye'] = float(info[8])
+        bbox['xnose'] = float(info[9])
+        bbox['ynose'] = float(info[10])
+        bbox['xleftmouth'] = float(info[11])
+        bbox['yleftmouth'] = float(info[12])
+        bbox['xrightmouth'] = float(info[13])
+        bbox['yrightmouth'] = float(info[14])
         data_unit['bbox'] = bbox
         data.append(data_unit)
     return data
@@ -128,3 +155,59 @@ def batch_generator(img_dir, label_files, batch_size, net, shuffle=False):
     dataset = dataset.batch(batch_size, drop_remainder=True).prefetch(1)
 
     return dataset
+
+
+def load_all(img_dir, label_file, net):
+    """
+
+    :param img_dir:
+    :param label_file:
+    :param net:
+    :return:
+    """
+    if net == "PNet": size = 12
+    elif net == "RNet": size = 24
+    elif net == "ONet": size = 48
+    else:
+        print('Net type error')
+        return
+
+    test_label_file = open(os.path.join(img_dir, 'test_{}.txt'.format(size)), 'w')
+
+    label_file = read_label_file2(label_file)
+    name_array = []
+    image_array = []
+    label_array = []
+    bbox_array = []
+    landmark_array = []
+    for data_unit in label_file:
+        filename = data_unit["filename"]
+        bbox = data_unit["bbox"]
+
+        # read image
+        img_path = os.path.join(img_dir, filename).replace('\\', '/')
+        img = cv2.imread(img_path)
+        height, width, channel = img.shape
+
+        # read normalized bounding box
+        xmin, ymin, xmax, ymax = int(bbox["xmin"]), int(bbox["ymin"]), int(bbox["xmax"]), int(bbox["ymax"])
+        box_normalized = [float(xmin)/width, float(ymin)/height, float(xmax)/width, float(ymax)/height]
+
+        # read normalized landmarks
+        landmark1 = [bbox["xlefteye"]/width, bbox["ylefteye"]/height]
+        landmark2 = [bbox["xrighteye"]/width, bbox["yrighteye"]/height]
+        landmark3 = [bbox["xnose"]/width, bbox["ynose"]/height]
+        landmark4 = [bbox["xleftmouth"]/width, bbox["yleftmouth"]/height]
+        landmark5 = [bbox["xrightmouth"]/width, bbox["yrightmouth"]/height]
+        landmark_normalized = np.concatenate((landmark1, landmark2, landmark3, landmark4, landmark5), axis=0)
+
+        resized_im = cv2.resize(img, (size, size), interpolation=cv2.INTER_LINEAR)
+
+        name_array.append(filename)
+        image_array.append(resized_im)
+        label_array.append(1)
+        bbox_array.append(box_normalized)
+        landmark_array.append(landmark_normalized)
+
+        return np.array(name_array), np.array(image_array), np.array(label_array), \
+               np.array(bbox_array), np.array(landmark_array)
