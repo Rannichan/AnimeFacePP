@@ -75,8 +75,8 @@ def eval(data_array, model_path, img_dir, regression=False):
 
         bbox_pred_op = graph.get_tensor_by_name('bbox_fc/BiasAdd:0')
         landmark_pred_op = graph.get_tensor_by_name('landmark_fc/BiasAdd:0')
-        bbox_loss_op = graph.get_tensor_by_name('Mean:0')
-        landmark_loss_op = graph.get_tensor_by_name('Mean_1:0')
+        bbox_loss_op = graph.get_tensor_by_name('Mean_1:0')
+        landmark_loss_op = graph.get_tensor_by_name('Mean_3:0')
         L2_loss_op = graph.get_tensor_by_name('AddN:0')
 
         if regression:
@@ -93,10 +93,10 @@ def eval(data_array, model_path, img_dir, regression=False):
 
 
 if __name__ == "__main__":
-    data_array = load_all('../data/bbx_landmark', '../data/bbx_landmark/testImageList.txt', 'RNet')
+    data_array = load_all('../data/bbx_landmark', '../data/bbx_landmark/trainImageList.txt', 'RNet')
     output = eval(data_array=data_array,
                   model_path='../save/MTCNN_model/RNet',
                   img_dir='../data/bbx_landmark',
-                  regression=True)
+                  regression=False)
 
     print(output)

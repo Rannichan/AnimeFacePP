@@ -61,7 +61,7 @@ def train(net_factory, model_path, img_dir, label_files, val_label_file,
 
     # load data for validation
     val_data_array = load_all(img_dir, val_label_file, net)
-        
+
     if net == 'PNet':
         image_size = 12
         radio_bbox_loss = 0.5; radio_landmark_loss = 0.5
@@ -86,7 +86,6 @@ def train(net_factory, model_path, img_dir, label_files, val_label_file,
                                                              bbox_target=bbox_target,
                                                              landmark_target=landmark_target,
                                                              training=True)
-    print("name: ", bbox_loss_op.name, landmark_loss_op.name, L2_loss_op.name)
     total_loss_op  = radio_bbox_loss * bbox_loss_op + \
                      radio_landmark_loss * landmark_loss_op + \
                      L2_loss_op

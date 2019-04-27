@@ -84,7 +84,7 @@ def bbox_ohem_orginal(bbox_pred,bbox_target,label):
 
 
 #label=1 or label=-1 then do regression
-def bbox_ohem(bbox_pred,bbox_target,label):
+def bbox_ohem(bbox_pred,bbox_target,label, training):
     '''
 
     :param bbox_pred:
@@ -102,11 +102,11 @@ def bbox_ohem(bbox_pred,bbox_target,label):
     square_error = tf.reduce_sum(square_error,axis=1)
     #keep_num scalar
     num_valid = tf.reduce_sum(valid_inds)
-    #keep_num = tf.cast(num_valid*num_keep_radio,dtype=tf.int32)
     # count the number of pos and part examples
     keep_num = tf.cast(num_valid, dtype=tf.int32)
     #keep valid index square_error
-    square_error = square_error*valid_inds
+    if training:
+        square_error = square_error*valid_inds
     # keep top k examples, k equals to the number of positive examples
     _, k_index = tf.nn.top_k(square_error, k=keep_num)
     square_error = tf.gather(square_error, k_index)
@@ -114,7 +114,7 @@ def bbox_ohem(bbox_pred,bbox_target,label):
     return tf.reduce_mean(square_error)
 
 
-def landmark_ohem(landmark_pred,landmark_target,label):
+def landmark_ohem(landmark_pred,landmark_target,label, training):
     '''
 
     :param landmark_pred:
@@ -131,7 +131,8 @@ def landmark_ohem(landmark_pred,landmark_target,label):
     num_valid = tf.reduce_sum(valid_inds)
     #keep_num = tf.cast(num_valid*num_keep_radio,dtype=tf.int32)
     keep_num = tf.cast(num_valid, dtype=tf.int32)
-    square_error = square_error*valid_inds
+    if training:
+        square_error = square_error*valid_inds
     _, k_index = tf.nn.top_k(square_error, k=keep_num)
     square_error = tf.gather(square_error, k_index)
     return tf.reduce_mean(square_error)
@@ -173,8 +174,6 @@ def _activation_summary(x):
     print('load summary for : ',tensor_name)
     tf.summary.histogram(tensor_name + '/activations',x)
     #tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
-
-
 
 
 def P_Net(inputs,label=None,bbox_target=None,landmark_target=None,training=True):
@@ -266,27 +265,24 @@ def R_Net(inputs, label=None, bbox_target=None, landmark_target=None, training=T
         print("Flatten output shape: ", fc_flatten.get_shape())
         fc1 = slim.fully_connected(fc_flatten, num_outputs=128, scope="fc1")
         print("Fc1 output shape: ", fc1.get_shape())
-        # batch*2
         # cls_prob = slim.fully_connected(fc1,num_outputs=2,scope="cls_fc",activation_fn=tf.nn.softmax)
         # print("Cls output shape: ", cls_prob.get_shape())
-        # batch*4
         bbox_pred = slim.fully_connected(fc1, num_outputs=4, scope="bbox_fc", activation_fn=None)
-        print(bbox_pred.name)
         print("Bbox output shape: ", bbox_pred.get_shape())
-        # batch*10
         landmark_pred = slim.fully_connected(fc1, num_outputs=10, scope="landmark_fc", activation_fn=None)
-        print(landmark_pred.name)
         print("Landmark output shape: ", landmark_pred.get_shape())
-        # train
+
+        # cls_loss = cls_ohem(cls_prob, label)
+        # accuracy = cal_accuracy(cls_prob, label)
+        bbox_loss = bbox_ohem(bbox_pred, bbox_target, label, training=True)
+        bbox_loss_pred = bbox_ohem(bbox_pred, bbox_target, label, training=False)
+        landmark_loss = landmark_ohem(landmark_pred, landmark_target, label, training=True)
+        landmark_loss_pred = landmark_ohem(landmark_pred, landmark_target, label, training=False)
+        L2_loss = tf.add_n(slim.losses.get_regularization_losses())
         if training:
-            # cls_loss = cls_ohem(cls_prob, label)
-            bbox_loss = bbox_ohem(bbox_pred, bbox_target, label)
-            # accuracy = cal_accuracy(cls_prob, label)
-            landmark_loss = landmark_ohem(landmark_pred, landmark_target, label)
-            L2_loss = tf.add_n(slim.losses.get_regularization_losses())
             return bbox_loss, landmark_loss, L2_loss
         else:
-            return bbox_pred, landmark_pred
+            return bbox_loss_pred, landmark_loss_pred
 
 
 def O_Net(inputs,label=None,bbox_target=None,landmark_target=None,training=True):
