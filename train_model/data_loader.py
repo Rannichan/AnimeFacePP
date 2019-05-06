@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 
 
-def read_lable_file(label_file):
+def read_label_file(label_file):
     imagelist = open(label_file, 'r')
     data = []
     for line in imagelist.readlines():
@@ -21,32 +21,11 @@ def read_lable_file(label_file):
         bbox['ymin'] = 0
         bbox['xmax'] = 0
         bbox['ymax'] = 0
-        bbox['xlefteye'] = 0
-        bbox['ylefteye'] = 0
-        bbox['xrighteye'] = 0
-        bbox['yrighteye'] = 0
-        bbox['xnose'] = 0
-        bbox['ynose'] = 0
-        bbox['xleftmouth'] = 0
-        bbox['yleftmouth'] = 0
-        bbox['xrightmouth'] = 0
-        bbox['yrightmouth'] = 0
         if len(info) == 6:
             bbox['xmin'] = float(info[2])
             bbox['ymin'] = float(info[3])
             bbox['xmax'] = float(info[4])
             bbox['ymax'] = float(info[5])
-        if len(info) == 12:
-            bbox['xlefteye'] = float(info[2])
-            bbox['ylefteye'] = float(info[3])
-            bbox['xrighteye'] = float(info[4])
-            bbox['yrighteye'] = float(info[5])
-            bbox['xnose'] = float(info[6])
-            bbox['ynose'] = float(info[7])
-            bbox['xleftmouth'] = float(info[8])
-            bbox['yleftmouth'] = float(info[9])
-            bbox['xrightmouth'] = float(info[10])
-            bbox['yrightmouth'] = float(info[11])
         data_unit['bbox'] = bbox
         data.append(data_unit)
     return data
@@ -90,7 +69,7 @@ def read_image_file(image_file):
 
 def data_generator(img_dir, label_files, shuffle=True):
     """
-    read d
+
     :param img_dir:
     :param label_file:
     :return:
@@ -98,7 +77,7 @@ def data_generator(img_dir, label_files, shuffle=True):
     img_dir = str(img_dir, encoding="utf-8")
     labels = []
     for label_file in label_files:
-        labels += read_lable_file(label_file)
+        labels += read_label_file(label_file)
     if shuffle:
         random.shuffle(labels)
 
@@ -110,15 +89,10 @@ def data_generator(img_dir, label_files, shuffle=True):
         bbox = data_unit['bbox']
         roi = [bbox['xmin'], bbox['ymin'],
                bbox['xmax'], bbox['ymax']]
-        landmark = [bbox['xlefteye'], bbox['ylefteye'],
-                    bbox['xrighteye'], bbox['yrighteye'],
-                    bbox['xnose'], bbox['ynose'],
-                    bbox['xleftmouth'], bbox['yleftmouth'],
-                    bbox['xrightmouth'], bbox['yrightmouth']]
-        yield (image_data, class_label, roi, landmark)
+        yield (image_data, class_label, roi)
 
 
-def batch_generator(img_dir, label_files, batch_size, net, shuffle=False):
+def batch_generator(img_dir, label_files, batch_size, img_size, shuffle=False):
     '''
     Batchify data
     sents: list of sents
@@ -132,15 +106,8 @@ def batch_generator(img_dir, label_files, batch_size, net, shuffle=False):
         x_seqlens: int32 tensor. (batch_size,)
         sents: str tensor. (batch_size,)
     '''
-    if net == "PNet": size = 12
-    elif net == "RNet": size = 24
-    elif net == "ONet": size = 48
-    else:
-        size = 0
-        exit('Net type error')
-
-    types = (tf.int32, tf.int32, tf.float32, tf.float32)
-    shapes = ((size,size,None), (), (4,), (10,))
+    types = (tf.int32, tf.int32, tf.float32)
+    shapes = ((img_size, img_size, None), (), (4,))
 
     dataset = tf.data.Dataset.from_generator(
         data_generator,
@@ -157,58 +124,42 @@ def batch_generator(img_dir, label_files, batch_size, net, shuffle=False):
     return dataset
 
 
-def load_all(img_dir, label_file, net):
+def load_all(img_dir, label_files, img_size):
     """
-
+    load all data at once for validation
     :param img_dir:
     :param label_file:
-    :param net:
+    :param img_size:
     :return:
     """
-    if net == "PNet": size = 12
-    elif net == "RNet": size = 24
-    elif net == "ONet": size = 48
-    else:
-        print('Net type error')
-        return
-
-    test_label_file = open(os.path.join(img_dir, 'test_{}.txt'.format(size)), 'w')
-
-    label_file = read_label_file2(label_file)
+    labels = []
+    for label_file in label_files:
+        labels += read_label_file(label_file)
     name_array = []
     image_array = []
     label_array = []
     bbox_array = []
-    landmark_array = []
-    for data_unit in label_file:
+    for data_unit in labels:
         filename = data_unit["filename"]
         bbox = data_unit["bbox"]
+        label = data_unit["label"]
 
         # read image
         img_path = os.path.join(img_dir, filename).replace('\\', '/')
         img = cv2.imread(img_path)
         height, width, channel = img.shape
-        if height != width: continue
+        if height != img_size or width != img_size: continue
 
-        # read normalized bounding box
-        xmin, ymin, xmax, ymax = int(bbox["xmin"]), int(bbox["ymin"]), int(bbox["xmax"]), int(bbox["ymax"])
-        box_normalized = [float(xmin)/width, float(ymin)/height, float(xmax)/width, float(ymax)/height]
+        # # read normalized bounding box
+        xmin, ymin, xmax, ymax = float(bbox["xmin"]), float(bbox["ymin"]), float(bbox["xmax"]), float(bbox["ymax"])
+        bbox = [xmin, ymin, xmax, ymax]
+        # box_normalized = [float(xmin)/width, float(ymin)/height, float(xmax)/width, float(ymax)/height]
 
-        # read normalized landmarks
-        landmark1 = [bbox["xlefteye"]/width, bbox["ylefteye"]/height]
-        landmark2 = [bbox["xrighteye"]/width, bbox["yrighteye"]/height]
-        landmark3 = [bbox["xnose"]/width, bbox["ynose"]/height]
-        landmark4 = [bbox["xleftmouth"]/width, bbox["yleftmouth"]/height]
-        landmark5 = [bbox["xrightmouth"]/width, bbox["yrightmouth"]/height]
-        landmark_normalized = np.concatenate((landmark1, landmark2, landmark3, landmark4, landmark5), axis=0)
-
-        resized_im = cv2.resize(img, (size, size), interpolation=cv2.INTER_LINEAR)
+        # resized_im = cv2.resize(img, (img_size, img_size), interpolation=cv2.INTER_LINEAR)
 
         name_array.append(filename)
-        image_array.append(resized_im)
-        label_array.append(1)
-        bbox_array.append(box_normalized)
-        landmark_array.append(landmark_normalized)
+        image_array.append(img)
+        label_array.append(label)
+        bbox_array.append(bbox)
 
-    return (np.array(name_array), np.array(image_array), np.array(label_array), \
-               np.array(bbox_array), np.array(landmark_array))
+    return np.array(name_array), np.array(image_array), np.array(label_array), np.array(bbox_array)

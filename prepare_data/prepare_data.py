@@ -13,6 +13,116 @@ from prep_utils import IoU
 from landmark_utils import rotate, flip
 
 
+def gen_img(img_dir, label_file, img_size=48, aug_scale=10):
+    """
+    gen image and corresponding label file for bbox regression task training
+    :param img_dir:
+    :param label_file:
+    :param net:
+    :return:
+    """
+    print("\n")
+    pos_label_file = open(os.path.join(img_dir, 'pos_{}_{}.txt'.format(img_size, aug_scale)), 'w')
+    neg_label_file = open(os.path.join(img_dir, 'neg_{}_{}.txt'.format(img_size, aug_scale)), 'w')
+    pos_dir = os.path.join(img_dir, 'pos_{}_{}'.format(img_size, aug_scale))
+    neg_dir = os.path.join(img_dir, 'neg_{}_{}'.format(img_size, aug_scale))
+    if not os.path.exists(pos_dir): os.makedirs(pos_dir)
+    if not os.path.exists(neg_dir): os.makedirs(neg_dir)
+
+    img_idx = 0
+
+    labels = []
+    for label_file in label_files:
+        labels += read_label_file2(label_file)
+    for data_unit in labels:
+        filename = data_unit["filename"]
+        bbox = data_unit["bbox"]
+
+        # read image
+        img_path = os.path.join(img_dir, filename).replace('\\','/')
+        img = cv2.imread(img_path)
+        height, width, channel = img.shape
+
+        # read bounding box
+        xmin, ymin, xmax, ymax = bbox["xmin"], bbox["ymin"], bbox["xmax"], bbox["ymax"]
+        box = [xmin, ymin, xmax, ymax]
+        box = np.array([float(int(x)) for x in box])
+        boxes = box.reshape(-1, 4)
+        box_width = xmax - xmin + 1
+        box_height = ymax - ymin + 1
+
+        # ignore too small faces or incomplete faces
+        if min(box_width, box_height) < 20 or xmin < 0 or ymin < 0:
+            continue
+
+        # generate neg samples
+        neg_num = 0
+        max_num = 0
+        while neg_num < aug_scale:
+            max_num += 1
+            if max_num > 1000: break
+            size = np.random.randint(img_size, min(width, height) / 2)
+            minx = np.random.randint(0, width - size)
+            miny = np.random.randint(0, height - size)
+            crop_box = np.array([minx, miny, minx + size, miny + size])
+            Iou = IoU(crop_box, boxes)
+            cropped_im = img[miny: miny + size, minx: minx + size, :]
+            resized_im = cv2.resize(cropped_im, (img_size, img_size), interpolation=cv2.INTER_LINEAR)
+
+            if np.max(Iou) < 0.3:
+                save_file = os.path.join(neg_dir, "{}.jpg".format(img_idx))
+                cv2.imwrite(save_file, resized_im)
+                neg_label_file.write("neg_{}_{}/{}.jpg".format(img_size, aug_scale, img_idx) + ' 0\n')
+                img_idx += 1
+                neg_num += 1
+
+        pos_num = 0
+        max_num = 0
+        while pos_num < aug_scale:
+            max_num += 1
+            if max_num > 1000: break
+            size = np.random.randint(int(min(box_width, box_height) * 0.8),
+                                     np.ceil(max(box_width, box_height) * 1.25))
+
+            # offset of box center
+            delta_x = np.random.randint(int(-box_width * 0.2), int(box_width * 0.2))
+            delta_y = np.random.randint(int(-box_height * 0.2), int(box_height * 0.2))
+
+            new_xmin = int(max(xmin + box_width / 2 + delta_x - size / 2, 0))
+            new_ymin = int(max(ymin + box_height / 2 + delta_y - size / 2, 0))
+            new_xmax = new_xmin + size
+            new_ymax = new_ymin + size
+
+            # discard wrong new box
+            if new_xmax > width or new_ymax > height:
+                continue
+            else:
+                crop_box = np.array([new_xmin, new_ymin, new_xmax, new_ymax])
+
+            # get normalized bounding box
+            offset_x1 = (xmin - new_xmin) / float(size)
+            offset_y1 = (ymin - new_ymin) / float(size)
+            offset_x2 = (xmax - new_xmin) / float(size)
+            offset_y2 = (ymax - new_ymin) / float(size)
+
+            # crop new box form original image, and resize into the preset size
+            cropped_im = img[new_ymin: new_ymax, new_xmin: new_xmax, :]
+            resized_im = cv2.resize(cropped_im, (img_size, img_size), interpolation=cv2.INTER_LINEAR)
+
+            iou = IoU(crop_box, boxes)
+            if iou >= 0.7:
+                save_file = os.path.join(pos_dir, "{}.jpg".format(img_idx))
+                cv2.imwrite(save_file, resized_im)
+                pos_label_file.write("pos_{}_{}/{}.jpg".format(img_size, aug_scale, img_idx) +
+                                     ' 1 {:.2f} {:.2f} {:.2f} {:.2f}\n'.format(offset_x1, offset_y1,
+                                                                               offset_x2, offset_y2))
+                img_idx += 1
+                pos_num += 1
+
+        sys.stdout.write('\r>> {} images has been generated'.format(img_idx))
+        sys.stdout.flush()
+
+
 def gen_img_bbox(img_dir, label_file, net):
     """
     gen image and corresponding label file for bbox regression task training
@@ -107,7 +217,7 @@ def gen_img_bbox(img_dir, label_file, net):
             sys.stdout.flush()
 
 
-def gen_img_landmark(img_dir, label_file, net, argument=False):
+def gen_img_landmark(img_dir, label_files, net, argument=False):
     """
     gen image and corresponding label file for landmarks regression task training
     :param img_dir:
@@ -128,8 +238,10 @@ def gen_img_landmark(img_dir, label_file, net, argument=False):
     landmark_dir = os.path.join(img_dir, 'landmark_{}'.format(size))
     if not os.path.exists(landmark_dir): os.makedirs(landmark_dir)
     landmark_label_file = open(os.path.join(img_dir, "landmark_{}.txt".format(size)), 'w')
-    label_file = read_label_file2(label_file)
-    for data_unit in label_file:
+    labels = []
+    for label_file in label_files:
+        labels += read_label_file2(label_file)
+    for data_unit in labels:
         filename = data_unit["filename"]
         bbox = data_unit["bbox"]
 
@@ -334,7 +446,6 @@ def read_label_file(label_file, with_landmark=True):
     :return: List of 3-element-tuple, (img_path, bbox_tuple, landmark_tuple)
     """
     result = []
-
     with open(label_file, 'r') as lf:
         for line in lf:
             data_units = line.strip().split()
@@ -350,11 +461,17 @@ def read_label_file(label_file, with_landmark=True):
                     landmarks[i] = (float(data_units[5+2*i]),
                                     float(data_units[6+2*i]))
                 result.append((img_path, BBox(bbox), landmarks))
-
     return result
 
 
 def read_label_file2(label_file):
+    """
+    currently using
+    read original label file
+    bounding box annotated in the form of [xmin, xmax, ymin, ymax]
+    :param label_file:
+    :return: list of dict
+    """
     print('Read label file 2: the label file is ', label_file)
     imagelist = open(label_file, 'r')
     dataset = []
@@ -384,26 +501,20 @@ def read_label_file2(label_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", default="test", help="train_bbox/train_landmark/test", type=str)
-    parser.add_argument("--net", default="RNet", help="model name", type=str)
-    parser.add_argument("--img_dir", default="../data/bbx_landmark", help="image directory", type=str)
-    parser.add_argument("--label_file", default="../data/bbx_landmark/testImageList.txt", help="original label file", type=str)
+    parser.add_argument("--mode", default="train", help="generate training or validation data", type=str)
+    parser.add_argument("--img_dir", default="../data/bbx", help="image directory", type=str)
+    parser.add_argument("--label_files", default="../data/bbx/trainImageList.txt", help="original label file", type=str)
+    parser.add_argument("--img_size", default=48, help="size of generated image", type=int)
+    parser.add_argument("--aug_scale", default=10, help="augmentation scale", type=int)
     args = parser.parse_args()
     mode = args.mode
-    net = args.net
     img_dir = args.img_dir
-    label_file = args.label_file
-    # net = 'RNet'
-    # img_dir = '../data/bbx_landmark'
-    # train_label_file = '../data/bbx_landmark/trainImageList.txt'
-    # test_label_file = '../data/bbx_landmark/testImageList.txt'
-    # output_dir = '../data/train/RNet'
-
-    if mode == "test":
-        gen_img_test(img_dir, label_file, net)
-    elif mode == "train_bbox":
-        gen_img_bbox(img_dir, label_file, net)
-    elif mode == "train_landmark":
-        gen_img_landmark(img_dir, label_file, net, argument=True)
+    label_files = args.label_files.split()
+    img_size = args.img_size
+    aug_scale = args.aug_scale
+    if mode == "train":
+        gen_img(img_dir, label_files, img_size, aug_scale)
+    elif mode == "val":
+        gen_img(img_dir, label_files, img_size, aug_scale)
     else:
-        print("Mode error, pick one from train_bbox/train_landmark/test")
+        print("mode error!")

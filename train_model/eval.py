@@ -2,21 +2,14 @@
 yipengwa@usc.edu
 """
 import os
-import math
-import random
-import cv2
-from datetime import datetime
-from tqdm import tqdm
-import numpy as np
 import tensorflow as tf
-from mtcnn_model import R_Net
-from MTCNN_config import config
-from data_loader import batch_generator, load_all
-from train_utils import random_flip_images, image_color_distort, pred_visualizer
+from data_loader import load_all
+from train_utils import pred_visualizer
 from PIL import ImageDraw, Image
+from model import Manga_Net
 
 
-def eval(data_array, model_path, img_dir, regression=False):
+def eval(data_array, model_path, img_dir, image_size=48, regression=False):
     """
     If regression is False, compute bbox loss and landmark loss;
     If regression is True, do bbox regression and landmark regression.
@@ -27,29 +20,28 @@ def eval(data_array, model_path, img_dir, regression=False):
     :param regression:
     :return:
     """
-    net = model_path.split('/')[-1]
+    radio_bbox_loss = 0.7
+    radio_cls_loss = 0.3
 
-    if net == 'PNet':
-        image_size = 12
-        radio_bbox_loss = 0.5; radio_landmark_loss = 0.5
-    elif net == 'RNet':
-        image_size = 24
-        radio_bbox_loss = 0.5; radio_landmark_loss = 0.5
-    else:
-        image_size = 48
-        radio_bbox_loss = 0.5; radio_landmark_loss = 1
+    # define placeholder
+    input_image = tf.placeholder(tf.float32, shape=[None, image_size, image_size, 3], name='input_image')
+    label = tf.placeholder(tf.int32, shape=[None], name='label')
+    bbox_target = tf.placeholder(tf.float32, shape=[None, 4], name='bbox_target')
+    cls_loss_op, bbox_loss_op, L2_loss_op, cls_pred_op, bbox_pred_op = Manga_Net(inputs=input_image,
+                                                                                 label=label,
+                                                                                 bbox_target=bbox_target)
 
-    # saver = tf.train.Saver()
     with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        saver = tf.train.Saver()
         ckpt = tf.train.latest_checkpoint(model_path)
-        saver = tf.train.import_meta_graph(ckpt + '.meta')
-
         if ckpt is not None:
             print("Model found: {}".format(ckpt))
             saver.restore(sess, ckpt)
         else:
             print("Model not found")
             exit()
+        # saver.restore(sess, "../save/Manga_Net_model/manga_net_epoch18")
 
         # # for debugging
         # variable_names = [v.name for v in tf.all_variables()]
@@ -60,43 +52,29 @@ def eval(data_array, model_path, img_dir, regression=False):
         #     print(v)
         # exit()
 
-        graph = tf.get_default_graph()
-        input_image = graph.get_tensor_by_name('input_image:0')
-        label = graph.get_tensor_by_name('label:0')
-        bbox_target = graph.get_tensor_by_name('bbox_target:0')
-        landmark_target = graph.get_tensor_by_name('landmark_target:0')
-
         # load data
-        (name_array, image_array, label_array, bbox_array, landmark_array) = data_array
+        (name_array, image_array, label_array, bbox_array) = data_array
         feed_dict = {input_image: image_array,
                      label: label_array,
-                     bbox_target: bbox_array,
-                     landmark_target: landmark_array}
-
-        bbox_pred_op = graph.get_tensor_by_name('bbox_fc/BiasAdd:0')
-        landmark_pred_op = graph.get_tensor_by_name('landmark_fc/BiasAdd:0')
-        bbox_loss_op = graph.get_tensor_by_name('Mean_1:0')
-        landmark_loss_op = graph.get_tensor_by_name('Mean_3:0')
-        L2_loss_op = graph.get_tensor_by_name('AddN:0')
+                     bbox_target: bbox_array}
 
         if regression:
-            bbox_pred, landmark_pred = sess.run([bbox_pred_op, landmark_pred_op], feed_dict=feed_dict)
-            # pred_output = os.path.join(img_dir, 'pred')
-            pred_visualizer(img_dir, bbox_pred, landmark_pred, name_array)
+            cls_pred, bbox_pred = sess.run([cls_pred_op, bbox_pred_op], feed_dict=feed_dict)
+            pred_visualizer(img_dir, cls_pred, bbox_pred, name_array)
+            acc = sum(cls_pred)/len(cls_pred)
+            return acc, len(cls_pred)
         else:
-            bbox_loss, landmark_loss, L2_loss = sess.run([bbox_loss_op, landmark_loss_op, L2_loss_op],
-                                                         feed_dict=feed_dict)
-            total_loss = radio_bbox_loss * bbox_loss + \
-                         radio_landmark_loss * landmark_loss + \
-                         L2_loss
-            return  bbox_loss, landmark_loss, L2_loss, total_loss
+            cls_loss, bbox_loss, L2_loss = sess.run([cls_loss_op, bbox_loss_op, L2_loss_op],
+                                                    feed_dict=feed_dict)
+            total_loss = radio_cls_loss * cls_loss + radio_bbox_loss * bbox_loss + L2_loss
+            return cls_loss, bbox_loss, L2_loss, total_loss
 
 
 if __name__ == "__main__":
-    data_array = load_all('../data/bbx_landmark', '../data/bbx_landmark/trainImageList.txt', 'RNet')
+    label_files = ["../data/bbx/pos_48_1.txt"] # , "../data/bbx/neg_48_1.txt"
+    data_array = load_all('../data/bbx', label_files, 48)
     output = eval(data_array=data_array,
-                  model_path='../save/MTCNN_model/RNet',
-                  img_dir='../data/bbx_landmark',
-                  regression=False)
-
+                  model_path='../save/Manga_Net_model',
+                  img_dir='../data/bbx',
+                  regression=True)
     print(output)
